@@ -12,12 +12,14 @@ GeneLens is a distributed computing-based project that performs DNA sequence ali
 4. Gene comparison for mutation detection
 5. Supporting disease prediction
 
-**Technologies used are:**
--> C++ language
--> Socket programming with Winsock2
--> Basic SQL or File handling
--> GitHub CI/CD 
--> Cloud Deployment 
+**Technologies Used:**
+
+- **C++ Language**
+- **Socket Programming with Winsock2**
+- **Basic SQL or File Handling**
+- **GitHub CI/CD**
+- **Cloud Deployment**
+ 
 
 **About Me**
 This repository showcases my work for the DAA semester project, where I applied core CS concepts to a real-world problem related to gene and bioinformatics using C++, SQL and socket programming.
