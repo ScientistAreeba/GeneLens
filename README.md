@@ -1,4 +1,4 @@
-# GeneLens
+# GeneLens Distributed Gene-Based Disease Prediction
 **DAA Semester Project**
 Based on Distributed Computing, Gene Alignment,Mutation Detection and Disease Prediction
 
