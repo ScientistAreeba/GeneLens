@@ -11,6 +11,10 @@ using namespace std;
 
 int main()
 {
+    cout << " ===============================\n";
+    cout << "   Welcome to GeneLens !! \n";
+    cout << " ===============================\n";
+
     WSADATA wsa;
     SOCKET st;
     string inputG;
@@ -39,7 +43,9 @@ int main()
     if (resultSize > 0)
     {
         bufferSpace[resultSize] = '\0';
-        cout << "DNA Analysis: " << bufferSpace << endl;
+
+        cout << "DNA Analysis " << endl;
+        cout << bufferSpace << endl;
     }
     else {
         cout << "No response from GeneLens System" << endl;
