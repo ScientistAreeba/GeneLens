@@ -12,6 +12,7 @@ using namespace std;
 #define bufferCapacity 1024
 
 
+
 struct AlignmentScore
 {
     int score;
@@ -21,7 +22,6 @@ struct AlignmentScore
     int insertions;
     int deletions;
 };
-
 
 AlignmentScore smithWaterman(const string& input, const string& healthy, int match = 2, int mismatch = -1, int gap = -2)
 {
@@ -122,6 +122,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
 }
 
 
+
 void CreateAndInsertDB(const string& dbPath)
 {
     sqlite3* db;
@@ -133,7 +134,6 @@ void CreateAndInsertDB(const string& dbPath)
         cerr << "couldnt open database: " << sqlite3_errmsg(db) << endl;
         return;
     }
-
 
     //healthy gene database
     const char* createHgeneTableSQL = R"(
@@ -223,7 +223,6 @@ void CreateAndInsertDB(const string& dbPath)
         );
     )";
 
-
     rc = sqlite3_exec(db, createMgeneTableSQL, nullptr, nullptr, &errMsg);
     if (rc != SQLITE_OK)
     {
@@ -285,7 +284,53 @@ void CreateAndInsertDB(const string& dbPath)
     sqlite3_close(db);
 }
 
-void comparisonOfGeneSequence(const string& inputGene, SOCKET clientSocket, const string& dbFile)
+string diseasePredictorAndMutation(const string& dbFile, const string& seq)
+{
+    
+    string Bioresult = "Disease Predictor Results:\n";
+    sqlite3* db;
+    int rc = sqlite3_open(dbFile.c_str(), &db);
+    if (rc)
+    {
+        return Bioresult + "failed to open database:" + string(sqlite3_errmsg(db)) + "\n";
+    }
+
+    const char* Diseasequery = R"(
+        SELECT geneName, disease FROM MutationGenes
+        WHERE INSTR(?, mutationSequence) > 0;
+    )";
+
+    sqlite3_stmt* stmt;
+    rc = sqlite3_prepare_v2(db, Diseasequery, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        return Bioresult + "Predictor couldnt find results: " + string(sqlite3_errmsg(db)) + "\n";
+    }
+
+    sqlite3_bind_text(stmt, 1, seq.c_str(), -1, SQLITE_STATIC);
+
+    bool found = false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const char* gene = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* disease = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        Bioresult += "Mutation found in gene " + string(gene) + " Disease: " + string(disease) + "\n";
+        found = true;
+    }
+
+    if (!found)
+    {
+        Bioresult += "No mutations found in the client's input sequence.\n";
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    return Bioresult;
+}
+
+void comparisonOfGeneSequence(const string& dbFile, const string& inputGene, SOCKET clientSocket)
 {
     sqlite3* db;
     sqlite3_stmt* stmt;
@@ -326,19 +371,22 @@ void comparisonOfGeneSequence(const string& inputGene, SOCKET clientSocket, cons
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 
-    //string diseaseResults = predictDiseaseFromMutation(dbFile, inputGene);
+    string diseaseResults = diseasePredictorAndMutation(dbFile, inputGene);
+
+   
 
     string output = "Score: " + to_string(bestAligned.score) + "\n"
         + "Aligned Input: " + bestAligned.aligned_input + "\n"
         + "Aligned Gene: " + bestAligned.aligned_healthy + "\n"
         + "Updations: " + to_string(bestAligned.updations)
         + ", Insertions: " + to_string(bestAligned.insertions)
-        + ", Deletions: " + to_string(bestAligned.deletions) + "\n";
-        //+ diseaseResults;
+        + ", Deletions: " + to_string(bestAligned.deletions) + "\n\n"
+        + diseaseResults;
 
     send(clientSocket, output.c_str(), output.size(), 0);
     cout << "BioInformatics results sent to client.\n";
 }
+
 
 
 void clientComputation(SOCKET clientSocket)
@@ -358,7 +406,7 @@ void clientComputation(SOCKET clientSocket)
 
     cout << "\n Received DNA from client: " << clientG << "\n";
 
-    comparisonOfGeneSequence( clientG, clientSocket, "GenesDatabase.db");
+    comparisonOfGeneSequence("GenesDatabase.db", clientG, clientSocket);
 
     closesocket(clientSocket);
 }
@@ -391,7 +439,7 @@ void listenPorThread(int port)
         return;
     }
 
-    cout << " Server is listening on port \n" << port << endl;
+    cout << " Server is listening on port : " << port << "\n";
 
     while (true)
     {
@@ -410,14 +458,16 @@ void listenPorThread(int port)
 }
 
 
+
+
 int main()
 {
+    CreateAndInsertDB("GenesDatabase.db");
+
     WSADATA wsa;
-
-
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
     {
-        cerr << " WSAStartup failed."<< endl;
+        cerr << " WSAStartup failed." << endl;
         return 1;
     }
 
@@ -430,3 +480,5 @@ int main()
     WSACleanup();
     return 0;
 }
+
+
