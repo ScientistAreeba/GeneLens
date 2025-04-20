@@ -9,8 +9,12 @@ using namespace std;
 #define bufferCapacity 1024
 #define sPortNo 9001
 
-int main() 
+int main()
 {
+    cout << " ===============================\n";
+    cout << "  Welcome to GeneLens !! \n";
+    cout << " ===============================\n";
+    
     WSADATA wsa;
     SOCKET st;
     string inputG;
@@ -22,11 +26,11 @@ int main()
 
     server.sin_family = AF_INET;
     server.sin_port = htons(sPortNo);
-    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);  
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
 
     if (connect(st, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
     {
-        cerr << "connection couldnt establish."<<endl;
+        cerr << "connection couldnt establish." << endl;
         return 1;
     }
 
@@ -36,13 +40,15 @@ int main()
     send(st, inputG.c_str(), inputG.length(), 0);
     int resultSize = recv(st, bufferSpace, bufferCapacity, 0);
 
-    if (resultSize > 0) 
+    if (resultSize > 0)
     {
         bufferSpace[resultSize] = '\0';
-        cout << "DNA Analysis => " << bufferSpace << endl;
+
+        cout << "DNA Analysis " << endl;
+        cout << bufferSpace << endl;
     }
     else {
-        cout << "No response from GeneLens System"<<endl;
+        cout << "No response from GeneLens System" << endl;
     }
 
     closesocket(st);
