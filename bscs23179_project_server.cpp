@@ -18,7 +18,7 @@ struct AlignmentScore
     int score;
     string aligned_input;
     string aligned_healthy;
-    int updations;
+    int substitution;
     int insertions;
     int deletions;
 };
@@ -83,9 +83,9 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
     int i = max1;
     int j = max2;
 
-    int update = 0;
+    int substitues = 0;
     int insert = 0;
-    int remove = 0;
+    int deletes = 0;
 
 
     while (i > 0 && j > 0 && dp[i][j] != 0)
@@ -94,7 +94,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         {
             alignInput = input[i - 1] + alignInput;
             alignHealthy = healthy[j - 1] + alignHealthy;
-            if (input[i - 1] != healthy[j - 1]) ++update;
+            if (input[i - 1] != healthy[j - 1]) ++substitues;
             --i; --j;
         }
         else if (tracing[i][j] == 2)
@@ -108,7 +108,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         {
             alignInput = "-" + alignInput;
             alignHealthy = healthy[j - 1] + alignHealthy;
-            ++remove;
+            ++deletes;
             --j;
         }
         else
@@ -117,7 +117,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         }
     }
 
-    return { maxScore, alignInput, alignHealthy, update, insert, remove };
+    return { maxScore, alignInput, alignHealthy, substitues, insert, deletes };
 
 }
 
@@ -378,9 +378,9 @@ void comparisonOfGeneSequence(const string& dbFile, const string& inputGene, SOC
     string output = "Score: " + to_string(bestAligned.score) + "\n"
         + "Aligned Input: " + bestAligned.aligned_input + "\n"
         + "Aligned Gene: " + bestAligned.aligned_healthy + "\n"
-        + "Updations: " + to_string(bestAligned.updations)
-        + ", Insertions: " + to_string(bestAligned.insertions)
-        + ", Deletions: " + to_string(bestAligned.deletions) + "\n\n"
+        + "Substitution: " + to_string(bestAligned.substitution) + "\n"
+        + "Insertions: " + to_string(bestAligned.insertions) + "\n"
+        + "Deletions: " + to_string(bestAligned.deletions) + "\n\n"
         + diseaseResults;
 
     send(clientSocket, output.c_str(), output.size(), 0);
@@ -404,7 +404,7 @@ void clientComputation(SOCKET clientSocket)
     bufferSpace[inputSize] = '\0';
     string clientG(bufferSpace);
 
-    cout << "\n Received DNA from client: " << clientG << "\n";
+    cout << "\nReceived DNA from client: " << clientG << "\n";
 
     comparisonOfGeneSequence("GenesDatabase.db", clientG, clientSocket);
 
@@ -439,7 +439,10 @@ void listenPorThread(int port)
         return;
     }
 
-    cout << " Server is listening on port : " << port << "\n";
+    
+    cout << "\n";
+    cout << port<<" => Port is listening to Server " <<endl;
+    cout << endl;
 
     while (true)
     {
@@ -459,9 +462,13 @@ void listenPorThread(int port)
 
 
 
-
 int main()
 {
+    
+    cout << " ===============================\n";
+    cout << "  Welcome to GeneLens Central Server\n";
+    cout << " ===============================\n";
+
     CreateAndInsertDB("GenesDatabase.db");
 
     WSADATA wsa;
