@@ -12,8 +12,6 @@ using namespace std;
 #define bufferCapacity 1024
 
 
-string healthyG = "ATGCGTAGTC";
-
 struct AlignmentScore
 {
     int score;
@@ -122,6 +120,173 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
     return { maxScore, alignInput, alignHealthy, update, insert, remove };
 
 }
+
+
+
+
+void CreateAndInsertDB(const string& dbPath)
+{
+    sqlite3* db;
+    char* errMsg = nullptr;
+
+    int rc = sqlite3_open(dbPath.c_str(), &db);
+    if (rc)
+    {
+        cerr << "couldnt open database: " << sqlite3_errmsg(db) << endl;
+        return;
+    }
+
+
+    //healthy gene database
+    const char* createHgeneTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS HealthyGenes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            sequence TEXT,
+            UNIQUE(name, sequence)
+        );
+    )";
+
+    rc = sqlite3_exec(db, createHgeneTableSQL, nullptr, nullptr, &errMsg);
+
+    if (rc != SQLITE_OK)
+    {
+        cerr << "SQL error (HGenes): " << errMsg << endl;
+        sqlite3_free(errMsg);
+        sqlite3_close(db);
+        return;
+    }
+
+    const char* hGene[][2] =
+    {
+     {"BRCA1", "ATGAAAAAACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTCCCGGCTGGGGCATGTGGAGGGTGACTGT"},
+     {"TP53", "ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACGTTCTGT"},
+     {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCATTAAAGAAAATATCATCTTTGGTGTTTCCTATGATGAACACTTGGTTGGC"},
+     {"HBB", "ATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAG"},
+     {"INS", "ATGCCCTGTGGATGCGCCTCCTGCACCCCAGGCTTTTGTCAAACAGCACCTTTGTGGTTCTCACTGGTGGGCGCTCAGCCTATCTTG"},
+     {"APOE", "ATGAGGCCAGAGGGTCCAGGAGGAAGGTGAGTGAAGAGGGAGTGGAGGGAAGAGGAAGGGAAGGGAGGGAAGAGGAAGGGAGGG"},
+     {"BRCA2", "ATGGAGGAGCTCGAGTCGAGGAAGGAGGAGGAGAGGAGGAGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
+     {"EGFR", "ATGAAAGAGGAGGAGGAGGGAGGAGGAAGGAGGGAGGAGGGAGGGAGAGGGAGGGAGGAGGAGGGAGGGAGGGAGGAGGGAGGAAGG"},
+     {"FTO", "ATGGAGAGGAGAGGAAGAGGGAGAGGAAGGAGGGAGAGGAAGGGAGGGAGGAGGAGGAGGAAGGAGGAAGGGAGGGAGGGAGGGAGGAGGGAGG"},
+     {"MTOR", "ATGAGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
+     {"VHL", "ATGGAGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGG"},
+     {"G6PD", "ATGCCGCAGGGCCTCTCAGGCCAGGGCCTCCTGCGGCTCTGGCCTCTCGGCAGCGTGCAGGCCTCTCTGCCAGGGGCGTCTC"},
+     {"DMD", "ATGGATGTCATTTGGGAAAGGAGAGGTGGATGAAGTGAAGGAGGAGGAGGAAGAGGAAGGAGGGAGAGGAGGAGGGGAGGAGGA"},
+     {"MYH7", "ATGCCTCGTGCGGCGGTCTCCTGCTGCCTCCTGCCTGCTGCTCCTGCTGCCTGCTCCTGCTGCTGCTGCTGCTGCAGCTG"},
+     {"LDLR", "ATGGAGACAGCAGCAGGCGGGGAGGCGGCGCAGCGGGAGGGCGAGGCGCAGCGGCGGAGCGGCGCAGCGGGAGCGGC"},
+     {"P53BP1", "ATGGAGGTAGGAGGAAGGAGGAAGGAAGGAAGGAAGGAGGAGGAGGAAGGAGGAAGGAAGGAGGAAGGAGGAGG"},
+     {"TTN", "ATGGCCGGAGGTGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAG"},
+     {"COL1A1", "ATGGCCTCCCTGGTGGAGCTGGAGGGGCTGGAGGTGGAGGAGGCTGGAGGAGGAGGCTGGAGGAGGAGGAG"},
+     {"ACTN3", "ATGGCCGAGCGGCGGAGCGGCGGCGGAGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGC"},
+     {"VEGFA", "ATGAACTTTCTGCTGTCTTGGGTGCATTGGAGCCTTGCCTTGCTGCTCTACCTCCACCATGCCAAGTGGTCCCAGGCTGC"}
+    };
+
+
+
+    const char* insertHgeneSQL = R"(
+    INSERT OR IGNORE INTO HealthyGenes (name, sequence)
+    VALUES (?, ?);
+    )";
+
+    sqlite3_stmt* insertHgeneStmt;
+
+    rc = sqlite3_prepare_v2(db, insertHgeneSQL, -1, &insertHgeneStmt, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        cerr << "preparation failed at Hgene: " << sqlite3_errmsg(db) << "\n";
+        sqlite3_close(db);
+        return;
+    }
+
+    for (int i = 0; i < sizeof(hGene) / sizeof(hGene[0]); ++i)
+    {
+        sqlite3_reset(insertHgeneStmt);
+        sqlite3_clear_bindings(insertHgeneStmt);
+        sqlite3_bind_text(insertHgeneStmt, 1, hGene[i][0], -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertHgeneStmt, 2, hGene[i][1], -1, SQLITE_STATIC);
+
+        rc = sqlite3_step(insertHgeneStmt);
+        if (rc != SQLITE_DONE)
+            cerr << "Insertion failed at Hgene: " << sqlite3_errmsg(db) << endl;
+    }
+
+    sqlite3_finalize(insertHgeneStmt);
+
+
+
+    // mutation gene database
+    const char* createMgeneTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS MutationGenes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            geneName TEXT,
+            mutationSequence TEXT,
+            disease TEXT,
+            UNIQUE(geneName, mutationSequence)
+        );
+    )";
+
+
+    rc = sqlite3_exec(db, createMgeneTableSQL, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK)
+    {
+        cerr << "SQL error (MGenes): " << errMsg << endl;
+        sqlite3_free(errMsg);
+        sqlite3_close(db);
+        return;
+    }
+
+
+    const char* insertMgeneSQL = R"(
+        INSERT OR IGNORE INTO MutationGenes (geneName, mutationSequence, disease)
+        VALUES (?, ?, ?);
+    )";
+
+    const char* mGene[][3] =
+    {
+        {"BRCA1", "ACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTGTGTGTCCAGTTTCTGTTCTTGCAG", "Breast Cancer"},
+        {"TP53", "AGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGCCCTTGTCCAGCTCTGGGGAGAGG", "Li-Fraumeni Syndrome"},
+        {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCTGCCGTTTTGATGACGCTTCACTG", "Cystic Fibrosis"},
+        {"HBB", "CCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTG", "Sickle Cell Anemia"},
+        {"HTT", "CAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAG", "Huntington's Disease"},
+        {"FBN1", "TGAGGACTTCAGTGAGAGGAGACTTCCAGAGTTGGCTTCCAGAGTCTTCAGTGCAG", "Marfan Syndrome"},
+        {"MLH1", "GTGTAGTAGGAGGAGGTTGGAAGTGGATGAGGAGGCTGTTGTAGATGAGTAGGAG", "Hereditary Nonpolyposis Colorectal Cancer"},
+        {"PAH", "GGAGTGGGAGTGGTGGTGTGGTGAGGTGGAGTGAGGCTGTGGGAGTGGCTGTGG", "Phenylketonuria"},
+        {"DMD", "TGGTCTGGAGGTGTGGTGTGGAGGAGGTGGTGGAGGTGGTGGTGGTGGTGGAGG", "Duchenne Muscular Dystrophy"},
+        {"SMN1", "GCTGAGGGTGTGTGTGGTGGAGGAGGTGGGTGGAGGAGGTGTGGAGGTGAGGTG", "Spinal Muscular Atrophy"},
+        {"GBA", "GGAGGTGGAGGAGGAGGTGGGTGTGGGTGGAGGTGTGGAGGAGGTGTGGTGGTG", "Gaucher's Disease"},
+        {"NPC1", "CTGCTGAGGAGGGTGGAGGAGGTGGAGGGTGGAGGTGGTGGTGGAGGTGGTGGA", "Niemann-Pick Disease Type C"},
+        {"MECP2", "AGCTGAGGAGGTGGAGGAGGTGGTGGAGGAGGTGGGTGGAGGAGGTGGAGGTGG", "Rett Syndrome"},
+        {"TSC1", "GTGGGTGGAGGTGGAGGTGGAGGAGGTGGAGGTGGTGGAGGTGGGTGGTGGGTG", "Tuberous Sclerosis"},
+        {"PKD1", "GGAGGTGGAGGAGGTGGTGGAGGAGGTGGTGGGTGGAGGTGGAGGGTGGAGGTG", "Polycystic Kidney Disease"}
+    };
+
+
+    sqlite3_stmt* insertMgeneStmt;
+    rc = sqlite3_prepare_v2(db, insertMgeneSQL, -1, &insertMgeneStmt, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        cerr << "preparation failed Mgene: " << sqlite3_errmsg(db) << endl;
+        sqlite3_close(db);
+        return;
+    }
+
+    for (int i = 0; i < sizeof(mGene) / sizeof(mGene[0]); ++i)
+    {
+        sqlite3_reset(insertMgeneStmt);
+        sqlite3_clear_bindings(insertMgeneStmt);
+        sqlite3_bind_text(insertMgeneStmt, 1, mGene[i][0], -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertMgeneStmt, 2, mGene[i][1], -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertMgeneStmt, 3, mGene[i][2], -1, SQLITE_STATIC);
+
+        rc = sqlite3_step(insertMgeneStmt);
+        if (rc != SQLITE_DONE)
+            cerr << "Insertion failed at Mgene : " << sqlite3_errmsg(db) << endl;
+    }
+
+    sqlite3_finalize(insertMgeneStmt);
+    sqlite3_close(db);
+}
+
 
 
 
