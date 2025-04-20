@@ -122,8 +122,6 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
 }
 
 
-
-
 void CreateAndInsertDB(const string& dbPath)
 {
     sqlite3* db;
@@ -287,7 +285,60 @@ void CreateAndInsertDB(const string& dbPath)
     sqlite3_close(db);
 }
 
+void comparisonOfGeneSequence(const string& inputGene, SOCKET clientSocket, const string& dbFile)
+{
+    sqlite3* db;
+    sqlite3_stmt* stmt;
+    const char* selectSQL = "SELECT name, sequence FROM HealthyGenes";
 
+    if (sqlite3_open(dbFile.c_str(), &db) != SQLITE_OK)
+    {
+        cerr << "failed to open database.\n";
+        return;
+    }
+
+    if (sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        cerr << "failed to select the statement.\n";
+        sqlite3_close(db);
+        return;
+    }
+
+    int bestScore = -1;
+    string bestGene;
+    AlignmentScore bestAligned;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        string Gseq = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+
+        AlignmentScore score = smithWaterman(inputGene, Gseq);
+
+        if (score.score > bestScore)
+        {
+            bestScore = score.score;
+            bestGene = name;
+            bestAligned = score;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    //string diseaseResults = predictDiseaseFromMutation(dbFile, inputGene);
+
+    string output = "Score: " + to_string(bestAligned.score) + "\n"
+        + "Aligned Input: " + bestAligned.aligned_input + "\n"
+        + "Aligned Gene: " + bestAligned.aligned_healthy + "\n"
+        + "Updations: " + to_string(bestAligned.updations)
+        + ", Insertions: " + to_string(bestAligned.insertions)
+        + ", Deletions: " + to_string(bestAligned.deletions) + "\n";
+        //+ diseaseResults;
+
+    send(clientSocket, output.c_str(), output.size(), 0);
+    cout << "BioInformatics results sent to client.\n";
+}
 
 
 void clientComputation(SOCKET clientSocket)
@@ -307,7 +358,7 @@ void clientComputation(SOCKET clientSocket)
 
     cout << "\n Received DNA from client: " << clientG << "\n";
 
-    //compareWithHealthyGenesFromDB("GenesDatabase.db", clientG, clientSocket);
+    comparisonOfGeneSequence( clientG, clientSocket, "GenesDatabase.db");
 
     closesocket(clientSocket);
 }
