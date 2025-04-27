@@ -1,3 +1,4 @@
+#include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
@@ -19,6 +20,27 @@ string getCurrentDateTime()
     strftime(buffer, sizeof(buffer), "Date Recorded: %B %d, %Y - Time: %I:%M:%S %p", &localTime);
 
     return string(buffer);
+}
+
+void saveResultFile(string sampleId, string inputDNA, string analysisResult)
+{
+    string fileName = "SampleResult_" + sampleId + ".txt";
+    ofstream outFile(fileName, ios::app);
+
+    if (outFile.is_open())
+    {
+        outFile << "========== BioInformatics Result ==========" << endl;
+        outFile << "Input DNA : " << inputDNA << endl;
+        outFile << "DNA Analysis  : " << analysisResult << endl;
+        outFile << getCurrentDateTime() << endl;
+        outFile << "==========================================" << endl;
+        outFile.close();
+        cout << "\nResult saved in " << fileName << " successfully!\n";
+    }
+    else
+    {
+        cerr << "Error saving file!" << endl;
+    }
 }
 
 int main()
@@ -62,7 +84,6 @@ int main()
         cout << "==========================================" << endl;
 
         saveResultFile(patientName, inputG, bufferSpace);
-
     }
     else
     {
