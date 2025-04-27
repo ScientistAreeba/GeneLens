@@ -3,12 +3,13 @@
 #include <ws2tcpip.h>
 #include <string>
 #include <fstream>
+#include <opencv2/opencv.hpp> // OpenCV header added
 
 using namespace std;
 #pragma comment(lib, "ws2_32.lib")
 
 #define bufferCapacity 1024
-#define sPortNo 9001
+#define sPortNo 9000
 
 string getCurrentDateTime()
 {
@@ -22,9 +23,9 @@ string getCurrentDateTime()
     return string(buffer);
 }
 
-void saveResultFile(string sampleId, string inputDNA, string analysisResult)
+void savePatientResult(string patientName, string inputDNA, string analysisResult)
 {
-    string fileName = "SampleResult_" + sampleId + ".txt";
+    string fileName = "SampleResult_" + patientName + ".txt";
     ofstream outFile(fileName, ios::app);
 
     if (outFile.is_open())
@@ -41,6 +42,60 @@ void saveResultFile(string sampleId, string inputDNA, string analysisResult)
     {
         cerr << "Error saving file!" << endl;
     }
+}
+
+// SIMPLIFIED VISUALIZATION FUNCTION
+void visualizeSimpleDNA(const string& healthyDNA, const string& mutatedDNA, const string& patientName)
+{
+    int letterSpacing = 30; // Horizontal spacing between letters
+    int margin = 60;        // Margin
+    int imgWidth = max(healthyDNA.length(), mutatedDNA.length()) * letterSpacing + 100;
+    int imgHeight = 120;
+
+    cv::Mat vis(imgHeight, imgWidth, CV_8UC3, cv::Scalar(255, 255, 255)); // white background
+
+    // Font settings
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    double fontScale = 0.7;
+    int thickness = 2;
+
+    // Draw title
+    cv::putText(vis, "DNA Mutation Visualization:", cv::Point(10, margin - 20),
+        fontFace, fontScale, cv::Scalar(0, 0, 0), thickness);
+
+    // Draw DNA letters in a single line
+    for (int i = 0; i < healthyDNA.length(); i++)
+    {
+        cv::Scalar color;
+        char displayChar;
+
+        if (i < mutatedDNA.length() && healthyDNA[i] == mutatedDNA[i]) {
+            // Match - green
+            color = cv::Scalar(0, 200, 0);
+            displayChar = mutatedDNA[i];
+        }
+        else {
+            // Mismatch or gap - red
+            color = cv::Scalar(0, 0, 255);
+            displayChar = (i < mutatedDNA.length()) ? mutatedDNA[i] : '-';
+        }
+
+        int x = margin + i * letterSpacing;
+
+        // Draw the character
+        string letter(1, displayChar);
+        cv::putText(vis, letter, cv::Point(x, margin + 20),
+            fontFace, fontScale, color, thickness);
+    }
+
+    // Save and Show
+    string outImg = "DNAVisualization_" + patientName + ".png";
+    cv::imwrite(outImg, vis);
+    cout << "DNA visualization saved " << outImg << endl;
+
+    cv::imshow("DNA Visualization", vis);
+    cv::waitKey(0);
+    cv::destroyAllWindows();
 }
 
 int main()
@@ -78,12 +133,15 @@ int main()
         bufferSpace[resultSize] = '\0';
 
         cout << "\n========== BioInformatics Result ==========" << endl;
-        cout << "Input sample DNA : " << inputG << endl;
+        cout << "Input DNA : " << inputG << endl;
         cout << "DNA Analysis  : " << bufferSpace << endl;
-        cout << "Date and Time : " << getCurrentDateTime() << endl;
+        cout << "Date & Time : " << getCurrentDateTime() << endl;
         cout << "==========================================" << endl;
 
-        saveResultFile(patientName, inputG, bufferSpace);
+        savePatientResult(patientName, inputG, bufferSpace);
+
+        // Call the simplified visualization
+        visualizeSimpleDNA(bufferSpace, inputG, patientName);
     }
     else
     {
