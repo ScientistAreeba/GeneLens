@@ -18,10 +18,11 @@ struct AlignmentScore
     int score;
     string aligned_input;
     string aligned_healthy;
-    int substitution;
+    int updations;
     int insertions;
     int deletions;
 };
+
 
 AlignmentScore smithWaterman(const string& input, const string& healthy, int match = 2, int mismatch = -1, int gap = -2)
 {
@@ -83,9 +84,9 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
     int i = max1;
     int j = max2;
 
-    int substitues = 0;
+    int update = 0;
     int insert = 0;
-    int deletes = 0;
+    int remove = 0;
 
 
     while (i > 0 && j > 0 && dp[i][j] != 0)
@@ -94,7 +95,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         {
             alignInput = input[i - 1] + alignInput;
             alignHealthy = healthy[j - 1] + alignHealthy;
-            if (input[i - 1] != healthy[j - 1]) ++substitues;
+            if (input[i - 1] != healthy[j - 1]) ++update;
             --i; --j;
         }
         else if (tracing[i][j] == 2)
@@ -108,7 +109,7 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         {
             alignInput = "-" + alignInput;
             alignHealthy = healthy[j - 1] + alignHealthy;
-            ++deletes;
+            ++remove;
             --j;
         }
         else
@@ -117,11 +118,78 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
         }
     }
 
-    return { maxScore, alignInput, alignHealthy, substitues, insert, deletes };
+    return { maxScore, alignInput, alignHealthy, update, insert, remove };
 
 }
 
 
+void clientComputation(SOCKET clientSocket)
+{
+    char bufferSpace[bufferCapacity] = { 0 };
+    int inputSize = recv(clientSocket, bufferSpace, bufferCapacity - 1, 0);
+
+    if (inputSize <= 0)
+    {
+        cerr << "Failed to receive gene sequence.\n";
+        closesocket(clientSocket);
+        return;
+    }
+
+    bufferSpace[inputSize] = '\0';
+    string clientG(bufferSpace);
+
+    cout << "\n Received DNA from client: " << clientG << "\n";
+
+    comparisonOfGeneSequence("GeneDatabase.db", clientG, clientSocket);
+
+    closesocket(clientSocket);
+}
+
+void listenPorThread(int port)
+{
+    SOCKET ss = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss == INVALID_SOCKET)
+    {
+        cerr << " Socket couldnot built." << endl;
+        return;
+    }
+
+    sockaddr_in server{};
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
+
+    if (bind(ss, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
+    {
+        cerr << " Bind failed." << endl;
+        closesocket(ss);
+        return;
+    }
+
+    if (listen(ss, 5) == SOCKET_ERROR)
+    {
+        cerr << " Listening failed.\n";
+        closesocket(ss);
+        return;
+    }
+
+    cout << " Server is listening on port \n" << port << endl;
+
+    while (true)
+    {
+        sockaddr_in client{};
+        int client_size = sizeof(client);
+        SOCKET client_socket = accept(ss, (sockaddr*)&client, &client_size);
+
+        if (client_socket != INVALID_SOCKET)
+        {
+            thread client_thread(clientComputation, client_socket);
+            client_thread.detach();
+        }
+    }
+
+    closesocket(ss);
+}
 
 void CreateAndInsertDB(const string& dbPath)
 {
@@ -155,29 +223,29 @@ void CreateAndInsertDB(const string& dbPath)
         return;
     }
 
-    const char* hGene[][2] =
-    {
-     {"BRCA1", "ATGAAAAAACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTCCCGGCTGGGGCATGTGGAGGGTGACTGT"},
-     {"TP53", "ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACGTTCTGT"},
-     {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCATTAAAGAAAATATCATCTTTGGTGTTTCCTATGATGAACACTTGGTTGGC"},
-     {"HBB", "ATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAG"},
-     {"INS", "ATGCCCTGTGGATGCGCCTCCTGCACCCCAGGCTTTTGTCAAACAGCACCTTTGTGGTTCTCACTGGTGGGCGCTCAGCCTATCTTG"},
-     {"APOE", "ATGAGGCCAGAGGGTCCAGGAGGAAGGTGAGTGAAGAGGGAGTGGAGGGAAGAGGAAGGGAAGGGAGGGAAGAGGAAGGGAGGG"},
-     {"BRCA2", "ATGGAGGAGCTCGAGTCGAGGAAGGAGGAGGAGAGGAGGAGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
-     {"EGFR", "ATGAAAGAGGAGGAGGAGGGAGGAGGAAGGAGGGAGGAGGGAGGGAGAGGGAGGGAGGAGGAGGGAGGGAGGGAGGAGGGAGGAAGG"},
-     {"FTO", "ATGGAGAGGAGAGGAAGAGGGAGAGGAAGGAGGGAGAGGAAGGGAGGGAGGAGGAGGAGGAAGGAGGAAGGGAGGGAGGGAGGGAGGAGGGAGG"},
-     {"MTOR", "ATGAGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
-     {"VHL", "ATGGAGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGG"},
-     {"G6PD", "ATGCCGCAGGGCCTCTCAGGCCAGGGCCTCCTGCGGCTCTGGCCTCTCGGCAGCGTGCAGGCCTCTCTGCCAGGGGCGTCTC"},
-     {"DMD", "ATGGATGTCATTTGGGAAAGGAGAGGTGGATGAAGTGAAGGAGGAGGAGGAAGAGGAAGGAGGGAGAGGAGGAGGGGAGGAGGA"},
-     {"MYH7", "ATGCCTCGTGCGGCGGTCTCCTGCTGCCTCCTGCCTGCTGCTCCTGCTGCCTGCTCCTGCTGCTGCTGCTGCTGCAGCTG"},
-     {"LDLR", "ATGGAGACAGCAGCAGGCGGGGAGGCGGCGCAGCGGGAGGGCGAGGCGCAGCGGCGGAGCGGCGCAGCGGGAGCGGC"},
-     {"P53BP1", "ATGGAGGTAGGAGGAAGGAGGAAGGAAGGAAGGAAGGAGGAGGAGGAAGGAGGAAGGAAGGAGGAAGGAGGAGG"},
-     {"TTN", "ATGGCCGGAGGTGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAG"},
-     {"COL1A1", "ATGGCCTCCCTGGTGGAGCTGGAGGGGCTGGAGGTGGAGGAGGCTGGAGGAGGAGGCTGGAGGAGGAGGAG"},
-     {"ACTN3", "ATGGCCGAGCGGCGGAGCGGCGGCGGAGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGC"},
-     {"VEGFA", "ATGAACTTTCTGCTGTCTTGGGTGCATTGGAGCCTTGCCTTGCTGCTCTACCTCCACCATGCCAAGTGGTCCCAGGCTGC"}
+    const char* hGene[][2] = {
+     {"BRCA1", "ATGAAAAAACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTCCCGGCTGGGGCATGTGGAGGGTGACTGTATGAAAAAACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTCCCGGCTGGGGCATGTGGAGGGTGACTGTATGAAAAAACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTCCCGGCTGGGGCATGTGGAGGGTGACTGT"},
+     {"TP53", "ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACGTTCTGTATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACGTTCTGT"},
+     {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCATTAAAGAAAATATCATCTTTGGTGTTTCCTATGATGAACACTTGGTTGGCATGTTCGTCTTCCTGGATTATGCCTGGCACCATTAAAGAAAATATCATCTTTGGTGTTTCCTATGATGAACACTTGGTTGGC"},
+     {"HBB", "ATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAG"},
+     {"INS", "ATGCCCTGTGGATGCGCCTCCTGCACCCCAGGCTTTTGTCAAACAGCACCTTTGTGGTTCTCACTGGTGGGCGCTCAGCCTATCTTGATGCCCTGTGGATGCGCCTCCTGCACCCCAGGCTTTTGTCAAACAGCACCTTTGTGGTTCTCACTGGTGGGCGCTCAGCCTATCTTG"},
+     {"APOE", "ATGAGGCCAGAGGGTCCAGGAGGAAGGTGAGTGAAGAGGGAGTGGAGGGAAGAGGAAGGGAAGGGAGGGAAGAGGAAGGGAGGGATGAGGCCAGAGGGTCCAGGAGGAAGGTGAGTGAAGAGGGAGTGGAGGGAAGAGGAAGGGAAGGGAGGGAAGAGGAAGGGAGGG"},
+     {"BRCA2", "ATGGAGGAGCTCGAGTCGAGGAAGGAGGAGGAGAGGAGGAGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGATGGAGGAGCTCGAGTCGAGGAAGGAGGAGGAGAGGAGGAGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
+     {"EGFR", "ATGAAAGAGGAGGAGGAGGGAGGAGGAAGGAGGGAGGAGGGAGGGAGAGGGAGGGAGGAGGAGGGAGGGAGGGAGGAGGGAGGAAGGATGAAAGAGGAGGAGGAGGGAGGAGGAAGGAGGGAGGAGGGAGGGAGAGGGAGGGAGGAGGAGGGAGGGAGGGAGGAGGGAGGAAGG"},
+     {"FTO", "ATGGAGAGGAGAGGAAGAGGGAGAGGAAGGAGGGAGAGGAAGGGAGGGAGGAGGAGGAGGAAGGAGGAAGGGAGGGAGGGAGGGAGGAGGGAGGATGGAGAGGAGAGGAAGAGGGAGAGGAAGGAGGGAGAGGAAGGGAGGGAGGAGGAGGAGGAAGGAGGAAGGGAGGGAGGGAGGGAGGAGGGAGG"},
+     {"MTOR", "ATGAGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGATGAGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGG"},
+     {"VHL", "ATGGAGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGATGGAGGAGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGGAGGG"},
+     {"G6PD", "ATGCCGCAGGGCCTCTCAGGCCAGGGCCTCCTGCGGCTCTGGCCTCTCGGCAGCGTGCAGGCCTCTCTGCCAGGGGCGTCTCATGCCGCAGGGCCTCTCAGGCCAGGGCCTCCTGCGGCTCTGGCCTCTCGGCAGCGTGCAGGCCTCTCTGCCAGGGGCGTCTC"},
+     {"DMD", "ATGGATGTCATTTGGGAAAGGAGAGGTGGATGAAGTGAAGGAGGAGGAGGAAGAGGAAGGAGGGAGAGGAGGAGGGGAGGAGGAATGGATGTCATTTGGGAAAGGAGAGGTGGATGAAGTGAAGGAGGAGGAGGAAGAGGAAGGAGGGAGAGGAGGAGGGGAGGAGGA"},
+     {"MYH7", "ATGCCTCGTGCGGCGGTCTCCTGCTGCCTCCTGCCTGCTGCTCCTGCTGCCTGCTCCTGCTGCTGCTGCTGCTGCAGCTGATGCCTCGTGCGGCGGTCTCCTGCTGCCTCCTGCCTGCTGCTCCTGCTGCCTGCTCCTGCTGCTGCTGCTGCTGCAGCTG"},
+     {"LDLR", "ATGGAGACAGCAGCAGGCGGGGAGGCGGCGCAGCGGGAGGGCGAGGCGCAGCGGCGGAGCGGCGCAGCGGGAGCGGCATGGAGACAGCAGCAGGCGGGGAGGCGGCGCAGCGGGAGGGCGAGGCGCAGCGGCGGAGCGGCGCAGCGGGAGCGGC"},
+     {"P53BP1", "ATGGAGGTAGGAGGAAGGAGGAAGGAAGGAAGGAAGGAGGAGGAGGAAGGAGGAAGGAAGGAGGAAGGAGGAGGATGGAGGTAGGAGGAAGGAGGAAGGAAGGAAGGAAGGAGGAGGAGGAAGGAGGAAGGAAGGAGGAAGGAGGAGG"},
+     {"TTN", "ATGGCCGGAGGTGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGATGGCCGGAGGTGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGGAGG"},
+     {"COL1A1", "ATGGCCTCCCTGGTGGAGCTGGAGGGGCTGGAGGTGGAGGAGGCTGGAGGAGGAGGCTGGAGGAGGAGGAGATGGCCTCCCTGGTGGAGCTGGAGGGGCTGGAGGTGGAGGAGGCTGGAGGAGGAGGCTGGAGGAGGAGGAG"},
+     {"ACTN3", "ATGGCCGAGCGGCGGAGCGGCGGCGGAGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGCATGGCCGAGCGGCGGAGCGGCGGCGGAGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGCGGCGGCGGAGC"},
+     {"VEGFA", "ATGAACTTTCTGCTGTCTTGGGTGCATTGGAGCCTTGCCTTGCTGCTCTACCTCCACCATGCCAAGTGGTCCCAGGCTGCATGAACTTTCTGCTGTCTTGGGTGCATTGGAGCCTTGCCTTGCTGCTCTACCTCCACCATGCCAAGTGGTCCCAGGCTGC"}
     };
+
 
 
 
@@ -240,22 +308,30 @@ void CreateAndInsertDB(const string& dbPath)
 
     const char* mGene[][3] =
     {
-        {"BRCA1", "ACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTGTGTGTCCAGTTTCTGTTCTTGCAG", "Breast Cancer"},
-        {"TP53", "AGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGCCCTTGTCCAGCTCTGGGGAGAGG", "Li-Fraumeni Syndrome"},
-        {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCTGCCGTTTTGATGACGCTTCACTG", "Cystic Fibrosis"},
-        {"HBB", "CCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTG", "Sickle Cell Anemia"},
-        {"HTT", "CAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAG", "Huntington's Disease"},
-        {"FBN1", "TGAGGACTTCAGTGAGAGGAGACTTCCAGAGTTGGCTTCCAGAGTCTTCAGTGCAG", "Marfan Syndrome"},
-        {"MLH1", "GTGTAGTAGGAGGAGGTTGGAAGTGGATGAGGAGGCTGTTGTAGATGAGTAGGAG", "Hereditary Nonpolyposis Colorectal Cancer"},
-        {"PAH", "GGAGTGGGAGTGGTGGTGTGGTGAGGTGGAGTGAGGCTGTGGGAGTGGCTGTGG", "Phenylketonuria"},
-        {"DMD", "TGGTCTGGAGGTGTGGTGTGGAGGAGGTGGTGGAGGTGGTGGTGGTGGTGGAGG", "Duchenne Muscular Dystrophy"},
-        {"SMN1", "GCTGAGGGTGTGTGTGGTGGAGGAGGTGGGTGGAGGAGGTGTGGAGGTGAGGTG", "Spinal Muscular Atrophy"},
-        {"GBA", "GGAGGTGGAGGAGGAGGTGGGTGTGGGTGGAGGTGTGGAGGAGGTGTGGTGGTG", "Gaucher's Disease"},
-        {"NPC1", "CTGCTGAGGAGGGTGGAGGAGGTGGAGGGTGGAGGTGGTGGTGGAGGTGGTGGA", "Niemann-Pick Disease Type C"},
-        {"MECP2", "AGCTGAGGAGGTGGAGGAGGTGGTGGAGGAGGTGGGTGGAGGAGGTGGAGGTGG", "Rett Syndrome"},
-        {"TSC1", "GTGGGTGGAGGTGGAGGTGGAGGAGGTGGAGGTGGTGGAGGTGGGTGGTGGGTG", "Tuberous Sclerosis"},
-        {"PKD1", "GGAGGTGGAGGAGGTGGTGGAGGAGGTGGTGGGTGGAGGTGGAGGGTGGAGGTG", "Polycystic Kidney Disease"}
+        {"BRCA1", "ACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTGTGTGTCCAGTTTCTGTTCTTGCAGACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTGTGTGTCCAGTTTCTGTTCTTGCAGACTGAGTAAGGAAAGCCTGAGCCAGAGGGTGTGTGTGTCCAGTTTCTGTTCTTGCAG", "Breast Cancer"},
+        {"TP53", "AGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGCCCTTGTCCAGCTCTGGGGAGAGGAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGCCCTTGTCCAGCTCTGGGGAGAGGAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGCCCTTGTCCAGCTCTGGGGAGAGG", "Li-Fraumeni Syndrome"},
+        {"CFTR", "ATGTTCGTCTTCCTGGATTATGCCTGGCACCTGCCGTTTTGATGACGCTTCACTGATGTTCGTCTTCCTGGATTATGCCTGGCACCTGCCGTTTTGATGACGCTTCACTGATGTTCGTCTTCCTGGATTATGCCTGGCACCTGCCGTTTTGATGACGCTTCACTG", "Cystic Fibrosis"},
+        {"HBB", "CCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGCCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGCCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTG", "Sickle Cell Anemia"},
+        {"HTT", "CAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAG", "Huntington's Disease"},
+        {"FBN1", "TGAGGACTTCAGTGAGAGGAGACTTCCAGAGTTGGCTTCCAGAGTCTTCAGTGCAGTGAGGACTTCAGTGAGAGGAGACTTCCAGAGTTGGCTTCCAGAGTCTTCAGTGCAGTGAGGACTTCAGTGAGAGGAGACTTCCAGAGTTGGCTTCCAGAGTCTTCAGTGCAG", "Marfan Syndrome"},
+        {"MLH1", "GTGTAGTAGGAGGAGGTTGGAAGTGGATGAGGAGGCTGTTGTAGATGAGTAGGAGGTGTAGTAGGAGGAGGTTGGAAGTGGATGAGGAGGCTGTTGTAGATGAGTAGGAGGTGTAGTAGGAGGAGGTTGGAAGTGGATGAGGAGGCTGTTGTAGATGAGTAGGAG", "Hereditary Nonpolyposis Colorectal Cancer"},
+        {"PAH", "GGAGTGGGAGTGGTGGTGTGGTGAGGTGGAGTGAGGCTGTGGGAGTGGCTGTGGGGAGTGGGAGTGGTGGTGTGGTGAGGTGGAGTGAGGCTGTGGGAGTGGCTGTGGGGAGTGGGAGTGGTGGTGTGGTGAGGTGGAGTGAGGCTGTGGGAGTGGCTGTGG", "Phenylketonuria"},
+        {"DMD", "TGGTCTGGAGGTGTGGTGTGGAGGAGGTGGTGGAGGTGGTGGTGGTGGTGGAGGTGGTCTGGAGGTGTGGTGTGGAGGAGGTGGTGGAGGTGGTGGTGGTGGTGGAGGTGGTCTGGAGGTGTGGTGTGGAGGAGGTGGTGGAGGTGGTGGTGGTGGTGGAGG", "Duchenne Muscular Dystrophy"},
+        {"SMN1", "GCTGAGGGTGTGTGTGGTGGAGGAGGTGGGTGGAGGAGGTGTGGAGGTGAGGTGGCTGAGGGTGTGTGTGGTGGAGGAGGTGGGTGGAGGAGGTGTGGAGGTGAGGTGGCTGAGGGTGTGTGTGGTGGAGGAGGTGGGTGGAGGAGGTGTGGAGGTGAGGTG", "Spinal Muscular Atrophy"},
+        {"GBA", "GGAGGTGGAGGAGGAGGTGGGTGTGGGTGGAGGTGTGGAGGAGGTGTGGTGGTGGGAGGTGGAGGAGGAGGTGGGTGTGGGTGGAGGTGTGGAGGAGGTGTGGTGGTGGGAGGTGGAGGAGGAGGTGGGTGTGGGTGGAGGTGTGGAGGAGGTGTGGTGGTG", "Gaucher's Disease"},
+        {"NPC1", "CTGCTGAGGAGGGTGGAGGAGGTGGAGGGTGGAGGTGGTGGTGGAGGTGGTGGACTGCTGAGGAGGGTGGAGGAGGTGGAGGGTGGAGGTGGTGGTGGAGGTGGTGGACTGCTGAGGAGGGTGGAGGAGGTGGAGGGTGGAGGTGGTGGTGGAGGTGGTGGA", "Niemann-Pick Disease Type C"},
+        {"MECP2", "AGCTGAGGAGGTGGAGGAGGTGGTGGAGGAGGTGGGTGGAGGAGGTGGAGGTGGAGCTGAGGAGGTGGAGGAGGTGGTGGAGGAGGTGGGTGGAGGAGGTGGAGGTGGAGCTGAGGAGGTGGAGGAGGTGGTGGAGGAGGTGGGTGGAGGAGGTGGAGGTGG", "Rett Syndrome"},
+        {"TSC1", "GTGGGTGGAGGTGGAGGTGGAGGAGGTGGAGGTGGTGGAGGTGGGTGGTGGGTGGTGGGTGGAGGTGGAGGTGGAGGAGGTGGAGGTGGTGGAGGTGGGTGGTGGGTGGTGGGTGGAGGTGGAGGTGGAGGAGGTGGAGGTGGTGGAGGTGGGTGGTGGGTG", "Tuberous Sclerosis"},
+        {"PKD1", "GGAGGTGGAGGAGGTGGTGGAGGAGGTGGTGGGTGGAGGTGGAGGGTGGAGGTGGGAGGTGGAGGAGGTGGTGGAGGAGGTGGTGGGTGGAGGTGGAGGGTGGAGGTGGGAGGTGGAGGAGGTGGTGGAGGAGGTGGTGGGTGGAGGTGGAGGGTGGAGGTG", "Polycystic Kidney Disease"},
+        {"ALB", "ATGGCTGAGAACAGTCACAGTGTGAGGCTGTGGTTGCCTTGGGTGTGTGGGCCTGGTGCTGCTGAGGCTGGGAGGAGGGGCAGGAGG", "Analbuminemia"},
+        {"TTR", "ATGGAAGTGTTTGGGTTGGGGTTGCTGAGGTGGGAGTGGGGCTTCTGGTGTGGGGTTGGTGCTGTGGTGGTTGGTGGTTTGGGT", "Familial Amyloid Polyneuropathy"},
+        {"HFE", "ATGGTGCTGTGGTGGGGCTGCTGAGGAGGAGGTGAGGGAGGGGGAGGTGGGGGTGAGGGAGGGGGAGGTGGGGGTG", "Hereditary Hemochromatosis"},
+        {"COL6A1", "ATGCCAGGGTGGGGAGGGTGGGTGAGGGAGGGAGGAGGAGGGAGGAGGGGAGGGTGGAGGAGGGAGGGTGGAGGG", "Bethlem Myopathy"},
+        {"LMNA", "ATGGAGACAGAGGAGGAGGGAGAGGAGGGAGGGAGGAGGGAGGAGGGAGGAGGGAGGGAGGAGGGAGGGAGGA", "Emery–Dreifuss Muscular Dystrophy"},
+        {"FGFR3", "ATGCGCAGCTTCCCGGAGAGGAGAGAGAGAGAGCTGGTGGAGGAGGAGGGAGGGAGGGAGGGAGGGAGGAGGA", "Achondroplasia"},
+        {"PCSK9", "ATGGAGGGAGGCGGAGGGGAGGGGAGGGAGGGGAGGGAGGGGAGGGGAGGGAGGGAGGGAGGGGAGGGAGGGA", "Hypercholesterolemia"}
     };
+
 
 
     sqlite3_stmt* insertMgeneStmt;
@@ -284,208 +360,65 @@ void CreateAndInsertDB(const string& dbPath)
     sqlite3_close(db);
 }
 
-string diseasePredictorAndMutation(const string& dbFile, const string& seq)
+
+
+
+void handleServerRequest(SOCKET serverSocket)
 {
-
-    string Bioresult = "Disease Predictor Results:\n";
-    sqlite3* db;
-    int rc = sqlite3_open(dbFile.c_str(), &db);
-    if (rc)
+    char buffer[bufferCapacity] = { 0 };
+    int recvBytes = recv(serverSocket, buffer, bufferCapacity - 1, 0);
+    if (recvBytes <= 0)
     {
-        return Bioresult + "failed to open database:" + string(sqlite3_errmsg(db)) + "\n";
+        cerr << "Worker: Failed to receive sequence.\n";
+        closesocket(serverSocket);
+        return;
     }
 
-    const char* Diseasequery = R"(
-        SELECT geneName, disease FROM MutationGenes
-        WHERE INSTR(?, mutationSequence) > 0;
-    )";
+    buffer[recvBytes] = '\0';
+    string inputGene(buffer);
 
-    sqlite3_stmt* stmt;
-    rc = sqlite3_prepare_v2(db, Diseasequery, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK)
-    {
-        return Bioresult + "Predictor couldnt find results: " + string(sqlite3_errmsg(db)) + "\n";
-    }
+    cout << "Worker: Received gene from server: " << inputGene << endl;
 
-    sqlite3_bind_text(stmt, 1, seq.c_str(), -1, SQLITE_STATIC);
+    sqlite3_initialize();
+    sqlite3_shutdown(); // Just safety; actual DB call already opens/uses sqlite3
 
-    bool found = false;
+    SOCKET dummyClient = serverSocket; // Reuse socket for response
+    comparisonOfGeneSequence("GeneDatabase.db", inputGene, dummyClient);
 
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        const char* gene = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        const char* disease = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        Bioresult += "Mutation found in gene " + string(gene) + " Disease: " + string(disease) + "\n";
-        found = true;
-    }
-
-    if (!found)
-    {
-        Bioresult += "No mutations found in the client's input sequence.\n";
-    }
-
-    sqlite3_finalize(stmt);
-    sqlite3_close(db);
-
-    return Bioresult;
+    closesocket(serverSocket);
 }
-
-void comparisonOfGeneSequence(const string& dbFile, const string& inputGene, SOCKET clientSocket)
-{
-    sqlite3* db;
-    sqlite3_stmt* stmt;
-    const char* selectSQL = "SELECT name, sequence FROM HealthyGenes";
-
-    if (sqlite3_open(dbFile.c_str(), &db) != SQLITE_OK)
-    {
-        cerr << "failed to open database.\n";
-        return;
-    }
-
-    if (sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr) != SQLITE_OK)
-    {
-        cerr << "failed to select the statement.\n";
-        sqlite3_close(db);
-        return;
-    }
-
-    int bestScore = -1;
-    string bestGene;
-    AlignmentScore bestAligned;
-
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        string Gseq = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-
-        AlignmentScore score = smithWaterman(inputGene, Gseq);
-
-        if (score.score > bestScore)
-        {
-            bestScore = score.score;
-            bestGene = name;
-            bestAligned = score;
-        }
-    }
-
-    sqlite3_finalize(stmt);
-    sqlite3_close(db);
-
-    string diseaseResults = diseasePredictorAndMutation(dbFile, inputGene);
-
-
-
-    string output = "Score: " + to_string(bestAligned.score) + "\n"
-        + "Aligned Input: " + bestAligned.aligned_input + "\n"
-        + "Aligned Gene: " + bestAligned.aligned_healthy + "\n"
-        + "Substitution: " + to_string(bestAligned.substitution) + "\n"
-        + "Insertions: " + to_string(bestAligned.insertions) + "\n"
-        + "Deletions: " + to_string(bestAligned.deletions) + "\n\n"
-        + diseaseResults;
-
-    send(clientSocket, output.c_str(), output.size(), 0);
-    cout << "BioInformatics results sent to client.\n";
-}
-
-
-
-void clientComputation(SOCKET clientSocket)
-{
-    char bufferSpace[bufferCapacity] = { 0 };
-    int inputSize = recv(clientSocket, bufferSpace, bufferCapacity - 1, 0);
-
-    if (inputSize <= 0)
-    {
-        cerr << "Failed to receive gene sequence.\n";
-        closesocket(clientSocket);
-        return;
-    }
-
-    bufferSpace[inputSize] = '\0';
-    string clientG(bufferSpace);
-
-    cout << "\nReceived DNA from client: " << clientG << "\n";
-
-    comparisonOfGeneSequence("GenesDatabase.db", clientG, clientSocket);
-
-    closesocket(clientSocket);
-}
-
-void listenPorThread(int port)
-{
-    SOCKET ss = socket(AF_INET, SOCK_STREAM, 0);
-    if (ss == INVALID_SOCKET)
-    {
-        cerr << " Socket couldnot built." << endl;
-        return;
-    }
-
-    sockaddr_in server{};
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(port);
-
-    if (bind(ss, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
-    {
-        cerr << " Bind failed." << endl;
-        closesocket(ss);
-        return;
-    }
-
-    if (listen(ss, 5) == SOCKET_ERROR)
-    {
-        cerr << " Listening failed.\n";
-        closesocket(ss);
-        return;
-    }
-
-
-    cout << "\n";
-    cout << port << " => Port is listening to Server " << endl;
-    cout << endl;
-
-    while (true)
-    {
-        sockaddr_in client{};
-        int client_size = sizeof(client);
-        SOCKET client_socket = accept(ss, (sockaddr*)&client, &client_size);
-
-        if (client_socket != INVALID_SOCKET)
-        {
-            thread client_thread(clientComputation, client_socket);
-            client_thread.detach();
-        }
-    }
-
-    closesocket(ss);
-}
-
-
 
 int main()
 {
-
-    cout << " ===============================\n";
-    cout << "  Welcome to GeneLens Central Server\n";
-    cout << " ===============================\n";
-
-    CreateAndInsertDB("GenesDatabase.db");
-
+    CreateAndInsertDB("GeneDatabase.db");
     WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+
+    SOCKET workerSocket = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in workerAddr{};
+    workerAddr.sin_family = AF_INET;
+    workerAddr.sin_addr.s_addr = INADDR_ANY;
+    workerAddr.sin_port = htons(8000); // Worker port
+
+    bind(workerSocket, (sockaddr*)&workerAddr, sizeof(workerAddr));
+    listen(workerSocket, 5);
+
+    cout << "Worker: Listening for DNA tasks from server...\n";
+
+    while (true)
     {
-        cerr << " WSAStartup failed." << endl;
-        return 1;
+        SOCKET serverSock = accept(workerSocket, nullptr, nullptr);
+        if (serverSock != INVALID_SOCKET)
+        {
+            handleServerRequest(serverSock);
+        }
     }
 
-    thread t1(listenPorThread, 9000);
-    thread t2(listenPorThread, 9001);
-
-    t1.join();
-    t2.join();
-
+    closesocket(workerSocket);
     WSACleanup();
     return 0;
 }
+
+
 
 
