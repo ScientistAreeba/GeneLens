@@ -123,6 +123,107 @@ AlignmentScore smithWaterman(const string& input, const string& healthy, int mat
 }
 
 
+
+string predictDiseaseFromMutation(const string& dbPath, const string& sequence)
+{
+    string result = "Disease Prediction Results:\n";
+    sqlite3* db;
+    int rc = sqlite3_open(dbPath.c_str(), &db);
+    if (rc)
+    {
+        return result + "Can't open database: " + string(sqlite3_errmsg(db)) + "\n";
+    }
+
+    const char* query = R"(
+        SELECT geneName, disease FROM MutationGenes
+        WHERE INSTR(?, mutationSequence) > 0;
+    )";
+
+    sqlite3_stmt* stmt;
+    rc = sqlite3_prepare_v2(db, query, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        return result + "Prediction query failed: " + string(sqlite3_errmsg(db)) + "\n";
+    }
+
+    sqlite3_bind_text(stmt, 1, sequence.c_str(), -1, SQLITE_STATIC);
+
+    bool found = false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const char* gene = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* disease = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        result += "Mutation found in gene " + string(gene) + " Disease: " + string(disease) + "\n";
+        found = true;
+    }
+
+    if (!found)
+        result += "No mutations found in the input sequence.\n";
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    return result;
+}
+
+
+
+void comparisonOfGeneSequence(const string& dbFile, const string& inputGene, SOCKET clientSocket)
+{
+    sqlite3* db;
+    sqlite3_stmt* stmt;
+    const char* selectSQL = "SELECT name, sequence FROM HealthyGenes";
+
+    if (sqlite3_open(dbFile.c_str(), &db) != SQLITE_OK)
+    {
+        cerr << "failed to open database.\n";
+        return;
+    }
+
+    if (sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        cerr << "failed to select the statement.\n";
+        sqlite3_close(db);
+        return;
+    }
+
+    int bestScore = -1;
+    string bestGene;
+    AlignmentScore bestAligned;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        string Gseq = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+
+        AlignmentScore score = smithWaterman(inputGene, Gseq);
+
+        if (score.score > bestScore)
+        {
+            bestScore = score.score;
+            bestGene = name;
+            bestAligned = score;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    string diseaseResults = predictDiseaseFromMutation(dbFile, inputGene);
+
+    string output = "Score: " + to_string(bestAligned.score) + "\n"
+        + "Aligned Input: " + bestAligned.aligned_input + "\n"
+        + "Aligned Gene: " + bestAligned.aligned_healthy + "\n"
+        + "Updations: " + to_string(bestAligned.updations)
+        + ", Insertions: " + to_string(bestAligned.insertions)
+        + ", Deletions: " + to_string(bestAligned.deletions) + "\n\n"
+        + diseaseResults;
+
+    send(clientSocket, output.c_str(), output.size(), 0);
+    cout << "BioInformatics results sent to client.\n";
+}
+
 void clientComputation(SOCKET clientSocket)
 {
     char bufferSpace[bufferCapacity] = { 0 };
@@ -418,7 +519,6 @@ int main()
     WSACleanup();
     return 0;
 }
-
 
 
 
