@@ -1,23 +1,31 @@
-#include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
+#include <fstream>
+
 using namespace std;
 #pragma comment(lib, "ws2_32.lib")
-
 
 #define bufferCapacity 1024
 #define sPortNo 9001
 
+string getCurrentDateTime()
+{
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
+
+    char buffer[150];
+    strftime(buffer, sizeof(buffer), "Date Recorded: %B %d, %Y - Time: %I:%M:%S %p", &localTime);
+
+    return string(buffer);
+}
+
 int main()
 {
-    cout << " ===============================\n";
-    cout << "  Welcome to GeneLens !! \n";
-    cout << " ===============================\n";
-    
     WSADATA wsa;
     SOCKET st;
-    string inputG;
+    string inputG, patientName;
     struct sockaddr_in server;
     char bufferSpace[bufferCapacity] = { 0 };
 
@@ -30,11 +38,14 @@ int main()
 
     if (connect(st, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
     {
-        cerr << "connection couldnt establish." << endl;
+        cerr << "Connection couldn't establish." << endl;
         return 1;
     }
 
-    cout << "Enter DNA sequence : ";
+    cout << "Enter Sample Id: ";
+    cin >> patientName;
+
+    cout << "Enter DNA sequence: ";
     cin >> inputG;
 
     send(st, inputG.c_str(), inputG.length(), 0);
@@ -44,10 +55,17 @@ int main()
     {
         bufferSpace[resultSize] = '\0';
 
-        cout << "DNA Analysis " << endl;
-        cout << bufferSpace << endl;
+        cout << "\n========== BioInformatics Result ==========" << endl;
+        cout << "Input sample DNA : " << inputG << endl;
+        cout << "DNA Analysis  : " << bufferSpace << endl;
+        cout << "Date and Time : " << getCurrentDateTime() << endl;
+        cout << "==========================================" << endl;
+
+        saveResultFile(patientName, inputG, bufferSpace);
+
     }
-    else {
+    else
+    {
         cout << "No response from GeneLens System" << endl;
     }
 
